@@ -1,8 +1,10 @@
-name: Build Native Client
+name: Build SA-MP Client (.so)
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
@@ -10,27 +12,51 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout Repository
-      uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v4
 
-    - name: Unzip Source Code
-      run: |
-        unzip -o source/source.zip
-      
+      - name: Unzip Source Code
+        run: |
+          if [ -f "source.zip" ]; then
+            echo "Mengekstrak source.zip dari folder utama..."
+            unzip -o source.zip
+          elif [ -f "source/source.zip" ]; then
+            echo "Mengekstrak source/source.zip..."
+            unzip -o source/source.zip
+          elif ls *.zip 1> /dev/null 2>&1; then
+            echo "Mengekstrak file .zip yang ditemukan..."
+            unzip -o *.zip
+          else
+            echo "Tidak ada file .zip, menggunakan file langsung dari repository."
+          fi
 
-    - name: Download & Setup NDK r21e
-      run: |
-        wget -q https://dl.google.com/android/repository/android-ndk-r21e-linux-x86_64.zip
-        unzip -q android-ndk-r21e-linux-x86_64.zip
-        echo "NDK_HOME=$GITHUB_WORKSPACE/android-ndk-r21e" >> $GITHUB_ENV
-        echo "$GITHUB_WORKSPACE/android-ndk-r21e" >> $GITHUB_PATH
+      - name: Download & Setup NDK r21e
+        run: |
+          wget -q https://dl.google.com/android/repository/android-ndk-r21e-linux-x86_64.zip
+          unzip -q android-ndk-r21e-linux-x86_64.zip
+          echo "$GITHUB_WORKSPACE/android-ndk-r21e" >> $GITHUB_PATH
 
-    - name: Run ndk-build
-      run: |
-        ndk-build
+      - name: Run ndk-build
+        run: |
+          if [ -d "jni" ]; then
+            ndk-build
+          elif [ -f "Android.mk" ]; then
+            ndk-build NDK_PROJECT_PATH=.
+          else
+            JNI_DIR=$(find . -maxdepth 3 -type d -name "jni" | head -n 1)
+            if [ -n "$JNI_DIR" ]; then
+              cd "$JNI_DIR/.."
+              ndk-build
+            else
+              echo "Error: Folder jni atau Android.mk tidak ditemukan!"
+              exit 1
+            fi
+          fi
 
-    - name: Upload Native Libs (.so)
-      uses: actions/upload-artifact@v4
-      with:
-        name: samp-native-libs
-        path: libs/
+      - name: Upload Native Libs (.so) Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: samp-libs-so
+          path: |
+            libs/
+            obj/local/
